@@ -75,11 +75,15 @@ N8N_COUNT=25 BASE_HOST=yourdomain.com python3 scripts/generate-compose.py
 docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
 ```
 
-หยุดรัน:
+### Down / หยุดทั้ง stack
+
+หยุดและลบ containers ทั้งหมด (postgres, traefik, n8n ทุกตัว):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.generated.yml down
 ```
+
+ข้อมูลใน `./data/` ยังอยู่ — รัน `up -d` ใหม่จะใช้ข้อมูลเดิม (ถ้าต้องการลบ volume ด้วยให้ใช้ `down -v`)
 
 ## โครงสร้างโฟลเดอร์
 
