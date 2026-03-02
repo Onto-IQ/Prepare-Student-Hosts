@@ -1,0 +1,12 @@
+# รหัสผ่านและข้อมูลรันจริง
+.env
+data/
+
+# ไฟล์ generate — สร้างบนเซิร์ฟเวอร์ด้วย scripts/generate-compose.py
+docker-compose.generated.yml
+
+# รายการ URL อาจมี IP/โดเมนจริง
+HostList.md
+
+# IDE
+.cursor/

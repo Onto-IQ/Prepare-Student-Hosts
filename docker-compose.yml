@@ -1,0 +1,46 @@
+# Base stack for multi-instance n8n: Postgres + Traefik.
+# Use with: docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
+# Generate docker-compose.generated.yml on the server with: N8N_COUNT=25 BASE_HOST=yourdomain.com python3 scripts/generate-compose.py
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: n8n-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-n8n}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-n8npassword}
+      - POSTGRES_DB=${POSTGRES_DB:-n8n}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER:-n8n} -d ${POSTGRES_DB:-n8n}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  traefik:
+    # v3.6+ required for Docker API 1.44+ (Docker 29.x); v3.4 fails with "client version 1.24 is too old"
+    image: traefik:v3.6
+    container_name: n8n-traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redirect 80->443 ปิดไว้เมื่อใช้ nip.io/ไม่มี LE cert เพื่อให้เข้าได้ทาง http://
+      # - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      # - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data/letsencrypt:/letsencrypt

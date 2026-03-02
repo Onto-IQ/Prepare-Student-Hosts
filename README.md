@@ -1,0 +1,358 @@
+# Prepare-Student-Hosts
+
+สแต็กสำหรับเตรียม **n8n หลาย instance** ให้นักเรียน/ผู้เรียนแต่ละคนเข้าใช้ได้คนละ URL (หนึ่ง instance ต่อคน) ใช้ **PostgreSQL**, **Traefik** และ Docker Compose
+
+เหมาะกับห้องเรียนหรือ workshop ที่ต้องแจก n8n ให้ผู้เรียนหลายคนโดยไม่ต้องแชร์บัญชี
+
+## สถาปัตยกรรม
+
+| ส่วน | คำอธิบาย |
+|------|----------|
+| **Postgres** | ฐานข้อมูลกลาง — แต่ละ n8n instance ใช้ database แยก (`n8n_1`, `n8n_2`, …) |
+| **Traefik** | Reverse proxy + TLS (Let's Encrypt) — route ตาม host เช่น `n8n01.yourdomain.com` |
+| **n8n (N ตัว)** | จำนวน instance กำหนดจาก `N8N_COUNT` สร้างผ่าน `scripts/generate-compose.py` |
+
+## ความต้องการของระบบ
+
+- Docker และ Docker Compose
+- Python 3 (สำหรับสคริปต์ generate compose)
+- โดเมนชี้มาที่เซิร์ฟเวอร์ (A/CNAME) สำหรับ subdomain `n8n01`, `n8n02`, … 
+
+## การติดตั้งและรัน
+
+### 1. Clone / เข้าโฟลเดอร์โปรเจกต์
+
+```bash
+git clone https://github.com/Onto-IQ/Prepare-Student-Hosts.git
+cd Prepare-Student-Hosts
+```
+
+### 2. ตั้งค่า Environment
+
+คัดลอกไฟล์ตัวอย่างแล้วแก้ค่าให้ตรงกับเซิร์ฟเวอร์และโดเมน:
+
+```bash
+cp .env.example .env
+# แก้ไข .env — โดยเฉพาะ POSTGRES_PASSWORD, BASE_HOST, TRAEFIK_ACME_EMAIL
+```
+
+ตัวแปรสำคัญสำหรับโหมด multi-instance:
+
+| ตัวแปร | ความหมาย |
+|--------|----------|
+| `BASE_HOST` | โดเมนหลัก (เช่น `yourdomain.com`) — แต่ละ instance จะเป็น `n8n01.BASE_HOST`, `n8n02.BASE_HOST`, … |
+| `N8N_COUNT` | จำนวน n8n instances (ใช้ตอน generate compose) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | ใช้กับ Postgres และ n8n ทุก instance |
+| `TRAEFIK_ACME_EMAIL` | อีเมลสำหรับ Let's Encrypt |
+
+### 3. สร้างไฟล์ Docker Compose สำหรับ n8n (generated)
+
+สร้าง `docker-compose.generated.yml` จากจำนวน instance และโดเมนที่ตั้งไว้ใน `.env`:
+
+```bash
+# อ่านจาก .env หรือส่งตรง
+export $(grep -v '^#' .env | xargs)
+N8N_COUNT=${N8N_COUNT:-25} BASE_HOST=${BASE_HOST:-yourdomain.com} python3 scripts/generate-compose.py
+```
+
+หรือระบุค่าตรง:
+
+```bash
+N8N_COUNT=25 BASE_HOST=yourdomain.com python3 scripts/generate-compose.py
+```
+
+ไฟล์ที่ได้: `docker-compose.generated.yml` (ห้ามแก้ด้วยมือ)
+
+### 4. สร้างฐานข้อมูลใน Postgres (ครั้งแรกเท่านั้น)
+
+สคริปต์ใน `scripts/postgres-init/` จะรันอัตโนมัติเมื่อ volume Postgres ถูกสร้างครั้งแรก และสร้าง DB `n8n_1` … `n8n_25`  
+
+ถ้าใช้ `N8N_COUNT` มากกว่า 25 ต้องแก้ `scripts/postgres-init/01-create-databases.sh` ให้สร้าง DB ถึงจำนวนที่ต้องการ (หรือใช้ค่าในสคริปต์ให้ตรงกับ `N8N_COUNT` สูงสุดที่ใช้)
+
+### 5. รันสแต็ก
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
+```
+
+หยุดรัน:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.generated.yml down
+```
+
+## โครงสร้างโฟลเดอร์
+
+```
+Prepare-Student-Hosts/
+├── .env                    # ค่าจริง (ไม่ commit)
+├── .env.example            # ตัวอย่างตัวแปร
+├── docker-compose.yml      # Base: postgres + traefik
+├── docker-compose.generated.yml   # สร้างจากสคริปต์ (ไม่ commit ก็ได้ — generate บนเซิร์ฟเวอร์)
+├── scripts/
+│   ├── generate-compose.py # สร้าง docker-compose.generated.yml
+│   ├── fix-postgres-password.sh   # แก้รหัส Postgres เมื่อ 502
+│   └── postgres-init/
+│       └── 01-create-databases.sh  # สร้าง DB n8n_1..n8n_25 ตอน init
+├── HostList.md             # ตัวอย่างรายการ URL แจกนักเรียน (อัปเดตหลัง generate)
+└── data/                   # ข้อมูลรันจริง (ไม่ commit)
+    ├── postgres/
+    ├── letsencrypt/
+    └── n8n-1/ … n8n-N/
+```
+
+## การตั้งชื่อ
+
+| รูปแบบ | ตัวอย่าง |
+|--------|----------|
+| Subdomain | `n8n01`, `n8n02`, … `n8n25` |
+| URL เต็ม | `https://n8n01.yourdomain.com` |
+| Service (container) | `n8n-1`, `n8n-2`, … |
+| Database | `n8n_1`, `n8n_2`, … |
+
+## Deploy บน VPS (ตัวอย่าง Hostinger)
+
+ขั้นตอนด้านล่างใช้ได้กับ VPS ที่รัน Ubuntu (เช่น Hostinger VPS, DigitalOcean, Linode ฯลฯ)
+
+### 1. สร้าง VPS และ SSH
+
+- สร้าง VPS แบบ Ubuntu 22.04 LTS ขึ้นไป (แนะนำ RAM อย่างน้อย 2GB สำหรับรันหลาย n8n)
+- บันทึก **IP ของเซิร์ฟเวอร์** และรหัสผ่าน/SSH key
+- SSH เข้าเซิร์ฟเวอร์:
+
+```bash
+ssh root@YOUR_SERVER_IP
+# หรือ ssh ubuntu@YOUR_SERVER_IP ถ้าใช้ user ubuntu
+```
+
+### 2. ติดตั้ง Docker และ Docker Compose
+
+บน Ubuntu:
+
+```bash
+apt update && apt install -y ca-certificates curl
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt update && apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+ตรวจสอบ:
+
+```bash
+docker --version && docker compose version
+```
+
+### 3. ตั้งค่า DNS
+
+ที่ผู้ให้บริการโดเมน (หรือ Hostinger Domain/DNS):
+
+- **แบบ wildcard (แนะนำ)**  
+  เพิ่ม A record: `*.yourdomain.com` → IP ของ VPS  
+  จะได้ `n8n01.yourdomain.com`, `n8n02.yourdomain.com`, … ใช้ได้ทุก subdomain
+
+- **แบบระบุทีละ subdomain**  
+  เพิ่ม A record: `n8n01.yourdomain.com`, `n8n02.yourdomain.com`, … → IP ของ VPS (ตามจำนวน `N8N_COUNT`)
+
+รอให้ DNS propagate (มักไม่เกิน 5–15 นาที) ตรวจสอบด้วย:
+
+```bash
+dig n8n01.yourdomain.com +short
+# ควรได้ IP ของ VPS
+```
+
+### 4. นำโปรเจกต์ขึ้นเซิร์ฟเวอร์
+
+**วิธีที่ 1 — อัปโหลดด้วย SCP (จากเครื่องตัวเอง):**
+
+```bash
+# บนเครื่องตัวเอง (ไม่ใช่บน VPS)
+scp -r /path/to/9expert root@YOUR_SERVER_IP:/opt/
+```
+
+**วิธีที่ 2 — Clone จาก Git:**
+
+```bash
+# บน VPS
+apt install -y git
+git clone https://github.com/Onto-IQ/Prepare-Student-Hosts.git /opt/Prepare-Student-Hosts
+cd /opt/Prepare-Student-Hosts
+```
+
+### 5. ตั้งค่า Environment บน VPS
+
+```bash
+cd /opt/Prepare-Student-Hosts
+cp .env.example .env
+nano .env   # หรือ vi / vim
+```
+
+แก้ค่าให้ตรงกับเซิร์ฟเวอร์และโดเมน เช่น:
+
+```env
+POSTGRES_PASSWORD=รหัสผ่านที่แข็งแรง
+BASE_HOST=yourdomain.com
+TRAEFIK_ACME_EMAIL=admin@yourdomain.com
+```
+
+บันทึกแล้วออกจาก editor
+
+### 6. Generate Compose และรันสแต็ก
+
+```bash
+cd Prepare-Student-Hosts
+export $(grep -v '^#' .env | xargs)
+N8N_COUNT=${N8N_COUNT:-25} BASE_HOST=${BASE_HOST} python3 scripts/generate-compose.py
+docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
+```
+
+ตรวจสอบว่าคอนเทนเนอร์รันครบ:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.generated.yml ps
+```
+
+### 7. เปิดพอร์ต Firewall (ถ้าเปิด ufw อยู่)
+
+```bash
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 22/tcp   # SSH
+ufw enable
+ufw status
+```
+
+### 8. ตรวจสอบการทำงาน
+
+- เปิดเบราว์เซอร์ไปที่ `https://n8n01.yourdomain.com` (หรือ subdomain อื่นที่สร้าง)
+- ครั้งแรก Let's Encrypt อาจใช้เวลา 1–2 นาที ในการออกใบรับรอง
+- ถ้าเจอ certificate error ให้รอสักครู่แล้วรีเฟรช หรือตรวจสอบว่า DNS ชี้มาที่ IP ถูกต้องและพอร์ต 80/443 เปิด
+
+### สรุปคำสั่งรวด (หลังติดตั้ง Docker และตั้ง DNS แล้ว)
+
+```bash
+cd /path/to/Prepare-Student-Hosts
+cp .env.example .env && nano .env
+export $(grep -v '^#' .env | xargs)
+N8N_COUNT=${N8N_COUNT:-25} BASE_HOST=${BASE_HOST} python3 scripts/generate-compose.py
+docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
+```
+
+## Domain และการเข้าถึงสำหรับนักเรียน (Hostinger)
+
+การตั้งค่าโดเมนแบบนี้ใช้ได้กับ Hostinger และ VPS อื่นที่จัดการ DNS ได้ (รวมถึงโดเมนที่อยู่กับ Hostinger หรือชี้ nameserver มาที่ Hostinger)
+
+### Domain ต่อ n8n แต่ละตัว
+
+แต่ละ n8n service ใช้ **subdomain คนละตัว** ตามหมายเลข instance:
+
+| หมายเลข instance | Subdomain   | URL ที่นักเรียนเข้า (ตัวอย่าง BASE_HOST=yourdomain.com) |
+|------------------|------------|--------------------------------------------------------|
+| 1                | `n8n01`    | `https://n8n01.yourdomain.com`                         |
+| 2                | `n8n02`    | `https://n8n02.yourdomain.com`                         |
+| …                | …          | …                                                      |
+| 20               | `n8n20`    | `https://n8n20.yourdomain.com`                         |
+| …                | …          | …                                                      |
+| 25               | `n8n25`    | `https://n8n25.yourdomain.com`                         |
+
+ครู/ผู้ดูแลแจก URL ตามหมายเลขที่กำหนดให้แต่ละคน (เช่น นักเรียนคนที่ 1 → n8n01, คนที่ 2 → n8n02)
+
+### ตั้งค่า DNS บน Hostinger ให้ทุก subdomain ใช้ได้
+
+**วิธีที่ 1 — Wildcard (แนะนำ)**  
+ทำให้ทุก subdomain (`n8n01`, `n8n02`, … `n8n99`) ชี้มาที่ VPS เดียวกันด้วย record เดียว:
+
+1. เข้า **hPanel** → **Websites** → เลือกโดเมน → **Advanced** → **DNS Zone Editor**
+2. เพิ่ม **A record** หนึ่งรายการ:
+   - **Name / Host:** `*` (เครื่องหมายดอกจัน = wildcard)
+   - **Points to / Target:** IP ของ VPS (เช่น IP ของ Hostinger VPS)
+   - **TTL:** ค่าเริ่มต้น (เช่น 14400) ก็ได้
+3. บันทึก
+
+ผลลัพธ์: `n8n01.yourdomain.com`, `n8n02.yourdomain.com`, … จะ resolve ไปที่ IP ของ VPS ทั้งหมด ไม่ต้องเพิ่มทีละ subdomain
+
+**วิธีที่ 2 — เพิ่ม A record ทีละ subdomain**  
+ถ้าไม่ใช้ wildcard ให้เพิ่ม A record แยกแต่ละตัว เช่น:
+
+- Name: `n8n01` → Points to: IP ของ VPS  
+- Name: `n8n02` → Points to: IP ของ VPS  
+- … ทำไปจนครบตาม `N8N_COUNT`
+
+### ตรวจสอบว่าใช้งานได้สำหรับ Hostinger
+
+| หัวข้อ | รายละเอียด |
+|--------|-------------|
+| **โดเมนที่ Hostinger** | ใช้ DNS Zone Editor ของ Hostinger ได้เลย โดเมนต้องใช้ nameserver ของ Hostinger (หรือให้ผู้ให้บริการโดเมนชี้ NS มาที่ Hostinger) |
+| **โดเมนที่อื่น** | ถ้าโดเมนอยู่ที่อื่น ให้เพิ่ม A record (หรือ wildcard `*`) ที่ผู้ให้บริการนั้นชี้ไปที่ **IP ของ VPS** (ไม่ใช่ IP ของ shared hosting) |
+| **VPS คือ Hostinger VPS** | ใช้ IP public ของ VPS ตัวนั้นเป็นค่า "Points to" ใน A record |
+| **HTTPS** | Traefik รับพอร์ต 80/443 และออกใบรับรอง Let's Encrypt ให้แต่ละ host (n8n01, n8n02, …) อัตโนมัติ นักเรียนเข้าได้ผ่าน HTTPS โดยไม่ต้องตั้งค่าเพิ่ม |
+
+### การเข้าถึงของนักเรียน
+
+- นักเรียนเปิดเบราว์เซอร์ไปที่ URL ที่ได้รับ (เช่น `https://n8n05.yourdomain.com`)
+- ครั้งแรกอาจรอ 1–2 นาที สำหรับการออกใบรับรอง SSL
+- แต่ละ URL เป็น n8n instance แยกกัน (แยก workflow, credentials ต่อคน)
+
+### กรณีไม่มีโดเมน (ใช้แค่ VPS / hostname Hostinger)
+
+**ใช้ชื่อ host ของ Hostinger แบบ subdomain ไม่ได้**  
+ชื่อแบบ `srv1437279.hstgr.cloud` เป็น hostname เริ่มต้นของ VPS — DNS ของ `hstgr.cloud` อยู่ที่ Hostinger เราเพิ่ม subdomain อย่าง `n8n01.srv1437279.hstgr.cloud`, `n8n02.srv1437279.hstgr.cloud` เองไม่ได้ ดังนั้นถ้าต้องการหลาย instance ต่อนักเรียนหลายคน จะใช้ hostname นี้แบบ subdomain ไม่ได้
+
+**ทางเลือกเมื่อไม่มีโดเมน: ใช้ nip.io กับ IP ของ VPS**
+
+[nip.io](https://nip.io) เป็นบริการ DNS ฟรี ที่ให้ทุก subdomain ของ `<IP>.nip.io` ชี้ไปที่ IP นั้น โดยไม่ต้องซื้อโดเมน
+
+1. หา **IP สาธารณะของ VPS** (จาก hPanel หรือรัน `curl -s ifconfig.me` บน VPS)
+2. ตั้งค่าใน `.env`:
+   ```env
+   BASE_HOST=195.123.45.67.nip.io
+   ```
+   (แทน `195.123.45.67` ด้วย IP จริงของ VPS)
+3. Generate และรัน compose ตามปกติ
+
+ผลลัพธ์: นักเรียนเข้าได้ที่ `https://n8n01.195.123.45.67.nip.io`, `https://n8n02.195.123.45.67.nip.io`, … (ใช้ IP จริงของเซิร์ฟเวอร์)  
+Let's Encrypt ออกใบรับรองให้โดเมน nip.io ได้ ไม่ต้องซื้อโดเมน
+
+**ทางเลือกอื่น:** ถ้ารัน **n8n แค่ 1 instance** จะใช้ `srv1437279.hstgr.cloud` เป็น host เดียวได้ (ต้องปรับ compose ให้มีแค่ service n8n หนึ่งตัวและใช้ host นี้ใน Traefik) — แต่ถ้าต้องการหลายคนต่อหลาย instance แนะนำใช้ nip.io กับ IP ตามด้านบน
+
+### 404 / ไม่เข้าได้เมื่อใช้ nip.io หรือไม่มีโดเมน
+
+- **สาเหตุ:** ตอนนี้ compose ตั้งให้ใช้ **HTTP (port 80)** สำหรับ nip.io หรือเมื่อไม่ใช้ Let's Encrypt — การ redirect 80→443 ใน Traefik ถูกปิดไว้
+- **วิธีเข้า:** ใช้ **http://** แทน https (เช่น `http://n8n01.76.13.219.184.nip.io/`) เบราว์เซอร์อาจแจ้ง "ไม่ปลอดภัย" ซึ่งเป็นไปตามที่ตั้งไว้
+- **Secure cookie:** เมื่อใช้ HTTP สคริปต์ generate จะใส่ `N8N_SECURE_COOKIE=false` ให้อัตโนมัติ เพื่อให้ login/session ใช้ได้ (ถ้าไม่ปิด n8n จะบอกให้ใช้ TLS หรือ localhost)
+- **ถ้ามีโดเมนจริงและ DNS ชี้ถูกแล้ว:** ตั้ง `USE_LETSENCRYPT=true` ใน env แล้วรัน generate-compose อีกครั้ง แล้วเปิด redirect 80→443 ใน `docker-compose.yml` กลับมา
+
+### Traefik กับ Docker 29 (404 page not found)
+
+ถ้าเข้า URL แล้วได้ **404 page not found** และใน log ของ Traefik เห็น `client version 1.24 is too old. Minimum supported API version is 1.44` แปลว่า Docker บนเครื่องเป็น 29.x แต่ Traefik เก่า (เช่น v3.4) ยังใช้ Docker API เก่า จึงไม่เห็น container ของ n8n เลย
+
+**แก้:** ใช้ Traefik v3.6 ขึ้นไป (ใน `docker-compose.yml` ตั้ง `image: traefik:v3.6`) แล้วรัน `docker compose … up -d traefik` ใหม่
+
+### Bad Gateway (502) — รหัสผ่าน Postgres ไม่ตรง
+
+ถ้า n8n ขึ้น **502 Bad Gateway** และใน log เห็น `password authentication failed for user "n8n"` แปลว่ารหัสใน `.env` (POSTGRES_PASSWORD) ไม่ตรงกับรหัสที่ Postgres ใช้อยู่ (ตั้งตอน init volume ครั้งแรก)
+
+**แก้:** รันสคริปต์ให้รหัสใน Postgres ตรงกับ `.env` แล้ว restart n8n:
+
+```bash
+sh scripts/fix-postgres-password.sh
+docker compose -f docker-compose.yml -f docker-compose.generated.yml restart $(docker compose -f docker-compose.yml -f docker-compose.generated.yml ps -q --services | grep -E '^n8n-[0-9]+$')
+```
+
+### สิทธิ์โฟลเดอร์ data (ถ้า n8n restart loop / EACCES)
+
+ถ้า container n8n ขึ้นแล้ว crash ซ้ำ (ใน log เห็น `EACCES: permission denied, open '/home/node/.n8n/config'`) แก้โดยให้โฟลเดอร์ data เป็นของ user ที่รันใน container (UID 1000):
+
+```bash
+sudo chown -R 1000:1000 ./data/n8n-*
+docker compose -f docker-compose.yml -f docker-compose.generated.yml restart
+```
+
+---
+
+## หมายเหตุ
+
+- **Secrets**: อย่า commit `.env` ใช้ค่าจาก environment หรือ secret manager บน production
+- **Backup**: แนะนำให้ backup โฟลเดอร์ `data/postgres` และ `data/n8n-*` ตามนโยบาย
+- **License**: ใช้ตามที่กำหนดใน repo
