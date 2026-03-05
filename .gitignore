@@ -1,15 +1,104 @@
-# รหัสผ่านและข้อมูลรันจริง
+# =============================================================================
+# Sensitive Data — ห้าม Commit เด็ดขาด
+# =============================================================================
+
+# Environment variables และ secrets
 .env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# ข้อมูลรันจริง (รหัสผ่าน, keys)
 data/
 backups/
 
-# ไฟล์ generate — สร้างบนเซิร์ฟเวอร์ด้วย scripts/generate-compose.py
+# Cloudflare credentials (ไฟล์ json ที่ได้จาก cloudflared tunnel create)
+*credentials*.json
+cloudflared-*.json
+*.cfargotunnel.json
+
+# SSL/TLS keys
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# SSH keys
+.ssh/
+id_rsa*
+id_ed25519*
+*.pub
+
+# Database dumps
+*.sql
+*.sql.gz
+*.dump
+
+# =============================================================================
+# Generated Files — สร้างบนเซิร์ฟเวอร์ ไม่ต้อง Commit
+# =============================================================================
+
+# Docker compose generated (สร้างด้วย scripts/generate-compose.py)
 docker-compose.generated.yml
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# =============================================================================
+# IDE และ Editor
+# =============================================================================
+
+# Cursor
+.cursor/
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+
+# Vim/Neovim
+*.swp
+*.swo
+*~
+
+# =============================================================================
+# OS Files
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.nfs*
+
+# =============================================================================
+# Project Specific
+# =============================================================================
 
 # รายการ URL อาจมี IP/โดเมนจริง
 HostList.md
 
-# IDE
-.cursor/
+# Backup files
+*.bak
+*.backup
+*.old
 
-9expert.code-workspace
+# Temporary files
+*.tmp
+*.temp
+.cache/
