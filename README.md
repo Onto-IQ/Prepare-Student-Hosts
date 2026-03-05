@@ -4,6 +4,8 @@
 
 เหมาะกับห้องเรียนหรือ workshop ที่ต้องแจก n8n ให้ผู้เรียนหลายคนโดยไม่ต้องแชร์บัญชี
 
+**สารบัญ:** [การติดตั้งและรัน](#การติดตั้งและรัน) · [โครงสร้างโฟลเดอร์](#โครงสร้างโฟลเดอร์) · [Deploy บน VPS](#deploy-บน-vps-ตัวอย่าง-hostinger) · [nip.io](#กรณีไม่มีโดเมนใช้แค่-vps--hostname-hostinger) · [แก้ปัญหา](#404-page-not-found-ทุกเครื่องทุก-instance) · [Backup](#backup--restore)
+
 ## สถาปัตยกรรม
 
 | ส่วน | คำอธิบาย |
@@ -14,9 +16,9 @@
 
 ## ความต้องการของระบบ
 
-- Docker และ Docker Compose
+- Docker และ Docker Compose (v2)
 - Python 3 (สำหรับสคริปต์ generate compose)
-- โดเมนชี้มาที่เซิร์ฟเวอร์ (A/CNAME) สำหรับ subdomain `n8n01`, `n8n02`, … 
+- **โดเมนหรือ nip.io** — มีโดเมนให้ตั้ง DNS ชี้มาที่เซิร์ฟเวอร์ (A/wildcard); ไม่มีโดเมนใช้ [nip.io](https://nip.io) กับ IP ของ VPS ได้
 
 ## การติดตั้งและรัน
 
@@ -40,28 +42,23 @@ cp .env.example .env
 
 | ตัวแปร | ความหมาย |
 |--------|----------|
-| `BASE_HOST` | โดเมนหลัก (เช่น `yourdomain.com`) — แต่ละ instance จะเป็น `n8n01.BASE_HOST`, `n8n02.BASE_HOST`, … |
-| `N8N_COUNT` | จำนวน n8n instances (ใช้ตอน generate compose) |
+| `BASE_HOST` | โดเมนหรือ host สำหรับ subdomain (เช่น `yourdomain.com` หรือ `76.13.219.184.nip.io`) — URL จะเป็น `n8n01.BASE_HOST`, `n8n02.BASE_HOST`, … |
+| `N8N_COUNT` | จำนวน n8n instances (default 25 ใช้ตอน generate) |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | ใช้กับ Postgres และ n8n ทุก instance |
-| `TRAEFIK_ACME_EMAIL` | อีเมลสำหรับ Let's Encrypt |
+| `TRAEFIK_ACME_EMAIL` | อีเมลสำหรับ Let's Encrypt (เมื่อใช้ HTTPS) |
 
 ### 3. สร้างไฟล์ Docker Compose สำหรับ n8n (generated)
 
-สร้าง `docker-compose.generated.yml` จากจำนวน instance และโดเมนที่ตั้งไว้ใน `.env`:
+สร้าง `docker-compose.generated.yml` จากค่าใน `.env`:
 
 ```bash
-# อ่านจาก .env หรือส่งตรง
 export $(grep -v '^#' .env | xargs)
 N8N_COUNT=${N8N_COUNT:-25} BASE_HOST=${BASE_HOST:-yourdomain.com} python3 scripts/generate-compose.py
 ```
 
-หรือระบุค่าตรง:
+หรือระบุค่าตรง: `N8N_COUNT=25 BASE_HOST=yourdomain.com python3 scripts/generate-compose.py`
 
-```bash
-N8N_COUNT=25 BASE_HOST=yourdomain.com python3 scripts/generate-compose.py
-```
-
-ไฟล์ที่ได้: `docker-compose.generated.yml` (ห้ามแก้ด้วยมือ)
+ไฟล์ที่ได้: `docker-compose.generated.yml` (ห้ามแก้ด้วยมือ — แก้ `.env` แล้ว regenerate ใหม่)
 
 ### 4. สร้างฐานข้อมูลใน Postgres (ครั้งแรกเท่านั้น)
 
@@ -75,6 +72,10 @@ N8N_COUNT=25 BASE_HOST=yourdomain.com python3 scripts/generate-compose.py
 docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
 ```
 
+ข้อมูล n8n เก็บใน **Docker named volumes** (`n8n_1_data`, `n8n_2_data`, …) — ไม่ต้อง chown โฟลเดอร์บน host จึงรันบนเครื่องใหม่ได้ทันทีหลัง generate + up
+
+**ถ้าใช้ nip.io (เช่น `http://n8n01.76.13.219.184.nip.io/`) หรือแก้ 404:** ใส่ `BASE_HOST=76.13.219.184.nip.io` ใน `.env` (ใช้ IP จริงของ VPS) แล้วรันคำสั่งเดียว `./scripts/regenerate-and-up.sh` เพื่อ regenerate และ restart stack
+
 ### Down / หยุดทั้ง stack
 
 หยุดและลบ containers ทั้งหมด (postgres, traefik, n8n ทุกตัว):
@@ -83,7 +84,8 @@ docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.generated.yml down
 ```
 
-ข้อมูลใน `./data/` ยังอยู่ — รัน `up -d` ใหม่จะใช้ข้อมูลเดิม (ถ้าต้องการลบ volume ด้วยให้ใช้ `down -v`)
+- ข้อมูล Postgres ยังอยู่ที่ `./data/postgres`
+- ข้อมูล n8n ยังอยู่ที่ Docker named volumes (`docker volume ls | grep n8n`) — ถ้าต้องการลบ volume ด้วยให้ใช้ `down -v`
 
 ## โครงสร้างโฟลเดอร์
 
@@ -94,15 +96,17 @@ Prepare-Student-Hosts/
 ├── docker-compose.yml      # Base: postgres + traefik
 ├── docker-compose.generated.yml   # สร้างจากสคริปต์ (ไม่ commit ก็ได้ — generate บนเซิร์ฟเวอร์)
 ├── scripts/
-│   ├── generate-compose.py # สร้าง docker-compose.generated.yml
+│   ├── generate-compose.py       # สร้าง docker-compose.generated.yml
+│   ├── regenerate-and-up.sh      # regenerate แล้ว down/up (แก้ 404)
 │   ├── fix-postgres-password.sh   # แก้รหัส Postgres เมื่อ 502
+│   ├── backup-n8n-volumes.sh      # backup/restore named volumes ของ n8n
 │   └── postgres-init/
 │       └── 01-create-databases.sh  # สร้าง DB n8n_1..n8n_25 ตอน init
 ├── HostList.md             # ตัวอย่างรายการ URL แจกนักเรียน (อัปเดตหลัง generate)
 └── data/                   # ข้อมูลรันจริง (ไม่ commit)
     ├── postgres/
-    ├── letsencrypt/
-    └── n8n-1/ … n8n-N/
+    └── letsencrypt/
+# ข้อมูล n8n อยู่ใน Docker named volumes (n8n_1_data, n8n_2_data, …) — ดูด้วย docker volume ls
 ```
 
 ## การตั้งชื่อ
@@ -172,7 +176,7 @@ dig n8n01.yourdomain.com +short
 
 ```bash
 # บนเครื่องตัวเอง (ไม่ใช่บน VPS)
-scp -r /path/to/9expert root@YOUR_SERVER_IP:/opt/
+scp -r /path/to/Prepare-Student-Hosts root@YOUR_SERVER_IP:/opt/
 ```
 
 **วิธีที่ 2 — Clone จาก Git:**
@@ -197,19 +201,20 @@ nano .env   # หรือ vi / vim
 ```env
 POSTGRES_PASSWORD=รหัสผ่านที่แข็งแรง
 BASE_HOST=yourdomain.com
+N8N_COUNT=25
 TRAEFIK_ACME_EMAIL=admin@yourdomain.com
 ```
 
-บันทึกแล้วออกจาก editor
+ไม่มีโดเมน: ใช้ `BASE_HOST=76.13.219.184.nip.io` (แทนด้วย IP จริงของ VPS) บันทึกแล้วออกจาก editor
 
 ### 6. Generate Compose และรันสแต็ก
 
 ```bash
-cd Prepare-Student-Hosts
-export $(grep -v '^#' .env | xargs)
-N8N_COUNT=${N8N_COUNT:-25} BASE_HOST=${BASE_HOST} python3 scripts/generate-compose.py
-docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
+cd /opt/Prepare-Student-Hosts
+./scripts/regenerate-and-up.sh
 ```
+
+หรือทำมือ: โหลด `.env` → รัน `generate-compose.py` → `docker compose up -d` (ใช้สองไฟล์ compose ตามขั้นตอนที่ 5)
 
 ตรวจสอบว่าคอนเทนเนอร์รันครบ:
 
@@ -233,14 +238,12 @@ ufw status
 - ครั้งแรก Let's Encrypt อาจใช้เวลา 1–2 นาที ในการออกใบรับรอง
 - ถ้าเจอ certificate error ให้รอสักครู่แล้วรีเฟรช หรือตรวจสอบว่า DNS ชี้มาที่ IP ถูกต้องและพอร์ต 80/443 เปิด
 
-### สรุปคำสั่งรวด (หลังติดตั้ง Docker และตั้ง DNS แล้ว)
+### สรุปคำสั่งรวด (หลังติดตั้ง Docker และตั้ง DNS / nip.io แล้ว)
 
 ```bash
-cd /path/to/Prepare-Student-Hosts
-cp .env.example .env && nano .env
-export $(grep -v '^#' .env | xargs)
-N8N_COUNT=${N8N_COUNT:-25} BASE_HOST=${BASE_HOST} python3 scripts/generate-compose.py
-docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
+cd /opt/Prepare-Student-Hosts
+cp .env.example .env && nano .env   # ตั้ง BASE_HOST (โดเมนหรือ IP.nip.io) และ POSTGRES_PASSWORD
+./scripts/regenerate-and-up.sh
 ```
 
 ## Domain และการเข้าถึงสำหรับนักเรียน (Hostinger)
@@ -310,22 +313,29 @@ docker compose -f docker-compose.yml -f docker-compose.generated.yml up -d
 1. หา **IP สาธารณะของ VPS** (จาก hPanel หรือรัน `curl -s ifconfig.me` บน VPS)
 2. ตั้งค่าใน `.env`:
    ```env
-   BASE_HOST=195.123.45.67.nip.io
+   BASE_HOST=76.13.219.184.nip.io
    ```
-   (แทน `195.123.45.67` ด้วย IP จริงของ VPS)
+   (แทน `76.13.219.184` ด้วย IP จริงของ VPS)
 3. Generate และรัน compose ตามปกติ
 
-ผลลัพธ์: นักเรียนเข้าได้ที่ `https://n8n01.195.123.45.67.nip.io`, `https://n8n02.195.123.45.67.nip.io`, … (ใช้ IP จริงของเซิร์ฟเวอร์)  
-Let's Encrypt ออกใบรับรองให้โดเมน nip.io ได้ ไม่ต้องซื้อโดเมน
+**ตัวอย่าง URL ที่นักเรียนเข้า (ใช้ HTTP เมื่อไม่มีใบรับรอง):**  
+`http://n8n01.76.13.219.184.nip.io/`, `http://n8n02.76.13.219.184.nip.io/`, … (ใช้ IP จริงของเซิร์ฟเวอร์)  
+ถ้าใช้ HTTPS: `https://n8n01.76.13.219.184.nip.io` — Let's Encrypt ออกใบรับรองให้โดเมน nip.io ได้
 
 **ทางเลือกอื่น:** ถ้ารัน **n8n แค่ 1 instance** จะใช้ `srv1437279.hstgr.cloud` เป็น host เดียวได้ (ต้องปรับ compose ให้มีแค่ service n8n หนึ่งตัวและใช้ host นี้ใน Traefik) — แต่ถ้าต้องการหลายคนต่อหลาย instance แนะนำใช้ nip.io กับ IP ตามด้านบน
 
-### 404 / ไม่เข้าได้เมื่อใช้ nip.io หรือไม่มีโดเมน
+### 404 Page Not Found (ทุกเครื่อง/ทุก instance)
 
-- **สาเหตุ:** ตอนนี้ compose ตั้งให้ใช้ **HTTP (port 80)** สำหรับ nip.io หรือเมื่อไม่ใช้ Let's Encrypt — การ redirect 80→443 ใน Traefik ถูกปิดไว้
-- **วิธีเข้า:** ใช้ **http://** แทน https (เช่น `http://n8n01.76.13.219.184.nip.io/`) เบราว์เซอร์อาจแจ้ง "ไม่ปลอดภัย" ซึ่งเป็นไปตามที่ตั้งไว้
-- **Secure cookie:** เมื่อใช้ HTTP สคริปต์ generate จะใส่ `N8N_SECURE_COOKIE=false` ให้อัตโนมัติ เพื่อให้ login/session ใช้ได้ (ถ้าไม่ปิด n8n จะบอกให้ใช้ TLS หรือ localhost)
-- **ถ้ามีโดเมนจริงและ DNS ชี้ถูกแล้ว:** ตั้ง `USE_LETSENCRYPT=true` ใน env แล้วรัน generate-compose อีกครั้ง แล้วเปิด redirect 80→443 ใน `docker-compose.yml` กลับมา
+- **สาเหตุที่เป็นไปได้:** Traefik ไม่ได้ใช้ network เดียวกับ n8n หรือเราเตอร์ไม่ได้ผูก service ชัดเจน
+- **แก้ (รันคำสั่งเดียว):** ตั้ง `BASE_HOST` ใน `.env` ให้ตรงกับ URL ที่ใช้ (เช่น `76.13.219.184.nip.io`) แล้วรัน:
+  ```bash
+  ./scripts/regenerate-and-up.sh
+  ```
+  หรือทำมือ: regenerate แล้ว `docker compose … down` แล้ว `up -d`
+- **ต้องเข้า URL ตรงกับที่ใช้ตอน generate:** ใช้ `http://n8n01.${BASE_HOST}` (หรือ `https://` ถ้ามี cert) — ถ้าเข้าด้วย IP หรือ host คนละแบบ จะไม่ match เราเตอร์และได้ 404  
+- **ถ้าเดิมเข้าแบบ `http://n8n01.76.13.219.184.nip.io/`:** ใส่ `BASE_HOST=76.13.219.184.nip.io` ใน `.env` แล้วรัน `./scripts/regenerate-and-up.sh`
+
+**เมื่อใช้ nip.io หรือไม่มีใบรับรอง:** ใช้ **http://** (port 80) แทน https — สคริปต์จะใส่ `N8N_SECURE_COOKIE=false` ให้อัตโนมัติ ถ้ามีโดเมนจริงและต้องการ HTTPS ให้ตั้ง `USE_LETSENCRYPT=true` แล้ว regenerate และเปิด redirect 80→443 ใน `docker-compose.yml`
 
 ### Traefik กับ Docker 29 (404 page not found)
 
@@ -344,13 +354,34 @@ sh scripts/fix-postgres-password.sh
 docker compose -f docker-compose.yml -f docker-compose.generated.yml restart $(docker compose -f docker-compose.yml -f docker-compose.generated.yml ps -q --services | grep -E '^n8n-[0-9]+$')
 ```
 
-### สิทธิ์โฟลเดอร์ data (ถ้า n8n restart loop / EACCES)
+### สิทธิ์โฟลเดอร์ (เฉพาะกรณีใช้ bind mount เอง)
 
-ถ้า container n8n ขึ้นแล้ว crash ซ้ำ (ใน log เห็น `EACCES: permission denied, open '/home/node/.n8n/config'`) แก้โดยให้โฟลเดอร์ data เป็นของ user ที่รันใน container (UID 1000):
+โปรเจกต์นี้ใช้ **named volumes** สำหรับ n8n จึงไม่ต้อง chown บนเครื่องใหม่ ถ้าแก้ compose ให้ใช้ `./data/n8n-X` แทน volume ต้องรัน `sudo chown -R 1000:1000 ./data/n8n-*` ก่อน up
+
+### ย้ายข้อมูลจาก bind mount (รุ่นเก่า) ไป named volumes
+
+ถ้าเคยรันด้วย `./data/n8n-X` มาก่อน และอัปเดตมาใช้ named volumes แล้วต้องการย้ายข้อมูลเดิมเข้า volume (หยุด stack ก่อน):
 
 ```bash
-sudo chown -R 1000:1000 ./data/n8n-*
-docker compose -f docker-compose.yml -f docker-compose.generated.yml restart
+# ดูชื่อ volume จริง (มักมี project prefix): docker volume ls | grep n8n
+# ตัวอย่างย้าย data/n8n-1 เข้า volume (แทน VOLUME_NAME ด้วยชื่อจาก docker volume ls)
+docker run --rm -v VOLUME_NAME:/data -v "$(pwd)/data/n8n-1:/src:ro" alpine sh -c "cp -a /src/. /data/"
+# ทำซ้ำสำหรับ n8n-2, n8n-3, ... ตามจำนวนที่ใช้
+```
+
+---
+
+## Backup / Restore
+
+- **Postgres**: backup โฟลเดอร์ `data/postgres` ตามนโยบาย
+- **n8n (named volumes)**: ใช้สคริปต์ `scripts/backup-n8n-volumes.sh` เพื่อ backup/restore ข้อมูล n8n แต่ละ instance
+
+```bash
+# Backup ทุก n8n volume ไปที่ ./backups/
+./scripts/backup-n8n-volumes.sh backup
+
+# Restore จาก ./backups/ (หยุด stack ก่อน)
+./scripts/backup-n8n-volumes.sh restore
 ```
 
 ---
@@ -358,5 +389,5 @@ docker compose -f docker-compose.yml -f docker-compose.generated.yml restart
 ## หมายเหตุ
 
 - **Secrets**: อย่า commit `.env` ใช้ค่าจาก environment หรือ secret manager บน production
-- **Backup**: แนะนำให้ backup โฟลเดอร์ `data/postgres` และ `data/n8n-*` ตามนโยบาย
+- **Backup**: แนะนำให้ backup `data/postgres` และรัน `scripts/backup-n8n-volumes.sh backup` ตามนโยบาย
 - **License**: ใช้ตามที่กำหนดใน repo

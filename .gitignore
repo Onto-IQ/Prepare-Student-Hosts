@@ -1,6 +1,7 @@
 # รหัสผ่านและข้อมูลรันจริง
 .env
 data/
+backups/
 
 # ไฟล์ generate — สร้างบนเซิร์ฟเวอร์ด้วย scripts/generate-compose.py
 docker-compose.generated.yml

@@ -7,6 +7,8 @@ services:
     image: postgres:16-alpine
     container_name: n8n-postgres
     restart: unless-stopped
+    networks:
+      - web
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-n8n}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-n8npassword}
@@ -25,6 +27,8 @@ services:
     image: traefik:v3.6
     container_name: n8n-traefik
     restart: unless-stopped
+    networks:
+      - web
     security_opt:
       - no-new-privileges:true
     command:
@@ -44,3 +48,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./data/letsencrypt:/letsencrypt
+
+networks:
+  web:
+    name: n8n_web
