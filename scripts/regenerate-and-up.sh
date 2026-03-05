@@ -12,8 +12,10 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# โหลด .env (ค่าที่มีช่องว่างหรือ # กลางบรรทัดอาจต้องแก้มือ)
-export $(grep -v '^#' .env | grep -v '^[[:space:]]*$' | xargs) 2>/dev/null || true
+# โหลด .env แบบ shell (รองรับ inline comment หลังค่า)
+set -a
+. ./.env
+set +a
 
 N8N_COUNT="${N8N_COUNT:-25}"
 BASE_HOST="${BASE_HOST:-yourdomain.com}"
