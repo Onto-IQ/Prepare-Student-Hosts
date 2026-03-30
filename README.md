@@ -1,265 +1,287 @@
-# Prepare-Student-Hosts
+# 🎓 n8n Student Self-Host - คู่มือสำหรับนักเรียน
 
-สแต็กสำหรับเตรียม **n8n หลาย instance** ให้นักเรียน/ผู้เรียนแต่ละคนเข้าใช้ได้คนละ URL (หนึ่ง instance ต่อคน) ใช้ **PostgreSQL**, **Traefik** และ Docker Compose
+โปรเจกต์นี้รวมทั้ง **ระบบติดตั้ง n8n แบบ Self-Host** และ **ชุด Workflow สำหรับการเรียนการสอน** ตั้งแต่พื้นฐานจนถึงระดับสูง
 
-เหมาะกับห้องเรียนหรือ workshop ที่ต้องแจก n8n ให้ผู้เรียนหลายคนโดยไม่ต้องแชร์บัญชี
+## 📂 โครงสร้างโปรเจกต์
 
-**สารบัญ:** [เริ่มต้นใช้งาน](#เริ่มต้นใช้งาน-สำหรับทุกครั้งสอน) · [การติดตั้ง](#การติดตั้งครั้งแรก) · [Cloudflare Tunnel](#cloudflare-tunnel-แนะนำ) · [แก้ปัญหา](#แก้ปัญหา) · [Backup](#backup--restore)
+```
+n8n-student-selfhost/
+├── 📁 workflows/              # ชุด Workflow สำหรับการเรียน
+│   ├── 01_Basics/            # พื้นฐาน n8n (6 workflows)
+│   ├── 02_AI_Agents_Basics/  # AI Agents (5 workflows)
+│   └── 03_Used_Cases/        # Use Cases จริง (7 workflows)
+│
+├── 📁 Credentials/           # คู่มือการตั้งค่า Credentials
+│   ├── google-oauth.md
+│   ├── line-api.md
+│   └── openai-api.md
+│
+├── 📁 Case Studies/          # ตัวอย่าง Case จากธุรกิจจริง
+├── docker-compose.yml        # ไฟล์สำหรับรัน n8n
+├── .env.example             # ตัวอย่างการตั้งค่า
+└── README.md                # ไฟล์นี้
+```
 
 ---
 
-## 🚀 เริ่มต้นใช้งาน (สำหรับทุกครั้งสอน)
+## 🚀 Quick Start - เริ่มต้นใช้งาน
 
-ใช้คำสั่งเดียวสำหรับการ deploy ใหม่ทั้งหมด:
+### สำหรับผู้ที่ยังไม่มี n8n
 
-```bash
-# 1. Clone หรือเข้าไปในโฟลเดอร์โปรเจกต์
-cd /opt/Prepare-Student-Hosts
+ติดตั้ง n8n บนเครื่องตัวเองพร้อม Cloudflare Tunnel (สำหรับรับ Webhook):
 
-# 2. รันสคริปต์เริ่มต้น (ถ้ายังไม่มี .env จะถามให้สร้าง)
-./scripts/setup-class.sh
-```
+1. **Clone โปรเจกต์**
+   ```bash
+   git clone https://github.com/Onto-IQ/n8n-student-selfhost.git
+   cd n8n-student-selfhost
+   ```
 
-สคริปต์นี้จะ:
-- ตรวจสอบและสร้าง `.env` ถ้ายังไม่มี
-- ถามจำนวนนักเรียน (N8N_COUNT)
-- ถามโดเมนที่ใช้ (BASE_HOST)
-- Regenerate docker-compose
-- Start stack
-- แสดง URLs ทั้งหมดที่นักเรียนต้องใช้
+2. **ตั้งค่า Environment**
+   ```bash
+   cp .env.example .env
+   # แก้ไขไฟล์ .env ตามคู่มือด้านล่าง
+   ```
+
+3. **สิทธิ์โฟลเดอร์ (Linux / VPS — สำคัญ)**  
+   ภาพ `n8nio/n8n` รันด้วย user `node` (**UID/GID = 1000:1000**). ถ้าโฟลเดอร์ `data/n8n` บน host เป็น root จะเกิด `EACCES: permission denied` ตอนเขียน `config` และ container จะ restart วน  
+   ```bash
+   mkdir -p data/n8n data/postgres
+   sudo chown -R 1000:1000 data/n8n
+   ```
+   บน Docker Desktop (macOS/Windows) มักไม่เจอปัญหานี้เพราะการ mount ทำงานคนละแบบ
+
+4. **รัน n8n**
+   ```bash
+   docker compose up -d
+   ```
+
+5. **เข้าใช้งาน**
+   - Local: http://localhost:5678
+   - Online: https://n8n.your-domain.com (ถ้าตั้งค่า Cloudflare Tunnel)
 
 ---
 
-## 📋 การติดตั้งครั้งแรก
+## 📚 เนื้อหาการเรียน (18 Workflows)
 
-### ความต้องการของระบบ
+### 🌱 Phase 1: พื้นฐาน (01_Basics)
+สำหรับผู้ไม่เคยใช้ n8n - [ดูรายละเอียด](workflows/01_Basics/README.md)
 
-- Docker และ Docker Compose (v2)
-- Python 3
-- โดเมนบน Cloudflare หรือใช้ nip.io
+| ลำดับ | หัวข้อ | สิ่งที่เรียนรู้ |
+|-------|--------|----------------|
+| 01 | JSON Basics | Key-Value, Data Types |
+| 02 | Flow Control | IF, Switch Nodes |
+| 03 | Loop | Loop, Item Lists |
+| 04 | Data Transformation | Edit Fields, Code Node |
+| 05 | External APIs | HTTP Request |
+| 06 | Webhooks | Webhook Trigger |
 
-### ขั้นตอนติดตั้ง
+**⏱️ เวลา:** 1-2 วัน
 
-#### 1. Clone โปรเจกต์
+---
+
+### 🚀 Phase 2: AI Agents (02_AI_Agents_Basics)
+เริ่มสร้าง AI Agents - [ดูรายละเอียด](workflows/02_AI_Agents_Basics/README.md)
+
+| ลำดับ | หัวข้อ | สิ่งที่เรียนรู้ |
+|-------|--------|----------------|
+| 01 | Basic Chat Agent | AI Agent + Memory |
+| 02 | Agent with Tools | Function Calling |
+| 03 | Simple RAG | AI อ่านเอกสาร |
+| 04 | MCP Client | เชื่อม External Tools |
+| 04 | MCP Server | เปิด n8n เป็น Server |
+
+**⏱️ เวลา:** 2-3 วัน
+
+---
+
+### 🎯 Phase 3: Use Cases จริง (03_Used_Cases)
+ตัวอย่างจากโลกธุรกิจ - [ดูรายละเอียด](workflows/03_Used_Cases/README.md)
+
+| ระดับ | ไฟล์ | ใช้งาน |
+|-------|------|--------|
+| 🟢 พื้นฐาน | LINE Chat Gemini | Chat Bot |
+| 🟢 พื้นฐาน | Form → Google Workspace | ระบบรับเรื่อง |
+| 🟡 กลาง | Candidate Screening | HR Automation |
+| 🟡 กลาง | RAG with Pinecone | Vector DB |
+| 🔴 สูง | Multi-Agent Linear | Sequential Pattern |
+| 🔴 สูง | Multi-Agent Orchestration | 2026 Pattern |
+| 🔴 สูง | Sub-Workflows | Modular Design |
+
+**⏱️ เวลา:** 3-5 วัน
+
+---
+
+## 🛠️ คู่มือการติดตั้ง (Detailed Setup)
+
+### สิทธิ์โฟลเดอร์บน Linux / Server (Bind mount)
+
+| โฟลเดอร์ | ใช้กับ service | เจ้าของที่แนะนำบน host | เหตุผล |
+|----------|----------------|-------------------------|--------|
+| `data/n8n` | `n8n` | **1000:1000** (user `node` ในภาพ) | n8n ต้องเขียน `config`, encryption key, cache |
+| `data/postgres` | `postgres` | โดยปกติไม่ต้องแก้มือ — PostgreSQL ในภาพจะ `chown` ข้อมูลเองเมื่อโฟลเดอร์ว่าง | ถ้า copy ข้อมูลมาจากเครื่องอื่นและ postgres ไม่ start ให้ดู log แล้วปรับ owner ตาม uid ของ postgres ในภาพ |
+
+คำสั่งที่ใช้บ่อยหลัง clone หรือเมื่อ log มี `EACCES` ที่ `/home/node/.n8n`:
 
 ```bash
-git clone https://github.com/Onto-IQ/Prepare-Student-Hosts.git /opt/Prepare-Student-Hosts
-cd /opt/Prepare-Student-Hosts
+mkdir -p data/n8n data/postgres
+sudo chown -R 1000:1000 data/n8n
+docker compose up -d
 ```
 
-#### 2. ตั้งค่า Environment
+ตรวจสอบว่า n8n ขึ้นปกติ:
 
 ```bash
+docker compose ps
+docker compose logs n8n --tail 30
+```
+
+### 📋 Prerequisites
+
+1. [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+2. โดเมนเนมส่วนตัว ([Namecheap](https://www.namecheap.com/) แนะนำ)
+3. บัญชี [Cloudflare](https://dash.cloudflare.com/) (ฟรี)
+
+### ขั้นตอนที่ 1: เตรียม Domain และ Cloudflare
+
+1. **จดโดเมน** ที่ Namecheap หรือผู้ให้บริการอื่น
+2. **เพิ่ม Site ใน Cloudflare**:
+   - เข้า Cloudflare → Add a Site → ใส่โดเมน
+   - เลือก Free Plan
+3. **เปลี่ยน Nameservers** ที่ Namecheap เป็นค่าที่ Cloudflare ให้มา
+   - รอ 5 นาที - 24 ชั่วโมง
+
+### ขั้นตอนที่ 2: สร้าง Cloudflare Tunnel
+
+1. Cloudflare Dashboard → **Zero Trust** → **Networks** → **Tunnels**
+2. **Create a tunnel** → เลือก **Cloudflared**
+3. ตั้งชื่อ Tunnel (เช่น `n8n-my-pc`)
+4. คัดลอก **Token** จากคำสั่ง Docker (หลัง `--token`)
+5. **Route traffic**:
+   - Public hostname: `n8n.your-domain.com`
+   - Service: HTTP → `n8n:5678`
+
+### ขั้นตอนที่ 3: ตั้งค่า .env และรัน
+
+```bash
+# 1. คัดลอกไฟล์ตั้งค่า
 cp .env.example .env
-nano .env  # แก้ค่าตามต้องการ
+
+# 2. แก้ไข .env ด้วย Text Editor
+# POSTGRES_PASSWORD=your_password
+# N8N_HOST=n8n.your-domain.com
+# WEBHOOK_URL=https://n8n.your-domain.com/
+# CLOUDFLARE_TUNNEL_TOKEN=eyJh...
+
+# 3. สิทธิ์ volume (Linux / VPS)
+mkdir -p data/n8n data/postgres
+sudo chown -R 1000:1000 data/n8n
+
+# 4. รัน n8n
+docker compose up -d
 ```
 
-ตัวแปรสำคัญ:
+### ขั้นตอนที่ 4: เข้าใช้งาน
 
-| ตัวแปร | ค่าตัวอย่าง | คำอธิบาย |
-|--------|------------|----------|
-| `BASE_HOST` | `datafabric.academy` | โดเมนหลัก — นักเรียนจะเข้าที่ `n8n01.BASE_HOST` |
-| `N8N_COUNT` | `25` | จำนวนนักเรียน/instance |
-| `POSTGRES_PASSWORD` | (สร้างเอง) | รหัสผ่านฐานข้อมูล |
-| `TRAEFIK_ACME_EMAIL` | `admin@domain.com` | อีเมลสำหรับ Let's Encrypt |
+- Local: http://localhost:5678
+- Online: https://n8n.your-domain.com
+- ตั้งค่า Owner Account ครั้งแรก
 
-#### 3. รันครั้งแรก
+---
+
+## 🛑 การจัดการ n8n
+
+### หยุดการทำงาน
+```bash
+docker compose down
+```
+
+### ดู Logs
+```bash
+docker compose logs -f n8n
+```
+
+### อัปเดต n8n เป็นเวอร์ชันล่าสุด
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### สำรองข้อมูล (Backup)
+โฟลเดอร์ `data/` เก็บข้อมูลทั้งหมดของ n8n ควรสำรองก่อนลบ Container:
+
+| โฟลเดอร์ | เก็บอะไร |
+|----------|----------|
+| `data/postgres/` | ฐานข้อมูล (workflows, credentials ที่เข้ารหัสแล้ว, execution) |
+| `data/n8n/` | Config และ **Encryption Key** ที่ n8n ใช้ถอดรหัส credentials ใน DB |
 
 ```bash
-./scripts/setup-class.sh
+# สำรองทั้งคู่ (ต้องมีทั้งสองถึงจะ restore ได้ครบ)
+cp -r data data-backup-$(date +%Y%m%d)
+```
+
+> **⚠️ คำเตือน:** อย่าลบโฟลเดอร์ `data/` ถ้าต้องการเก็บ Workflow และ Credentials ที่สร้างไว้
+
+### กู้คืนข้อมูล (Restore)
+เพื่อให้ใช้ได้ทันทีหลัง restore:
+1. นำโฟลเดอร์ที่ backup กลับมาเป็น `data/` (หรือ copy เนื้อหาใน `data-backup-xxx/postgres` และ `data-backup-xxx/n8n` ไปที่ `data/postgres` และ `data/n8n`)
+2. ใช้ค่า `.env` เดิม (อย่างน้อย `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) ให้ตรงกับตอน backup
+3. รัน `docker compose up -d` — workflows และ credentials จะใช้ได้ตามเดิม
+
+ถ้าไม่มี `data/n8n` (หรือ Encryption Key ไม่ตรงกับตอน backup) credentials ใน DB จะถอดรหัสไม่ได้
+
+---
+
+## 🆘 แก้ไขปัญหาเบื้องต้น
+
+### n8n ไม่เปิด
+```bash
+# ตรวจสอบสถานะ
+docker compose ps
+
+# ดู error
+docker compose logs n8n
+```
+
+### Container `n8n` restart วน / log มี `EACCES` ที่ `.n8n/config`
+โฟลเดอร์ `data/n8n` บน host ไม่ใช่ UID **1000** — แก้แล้วรันใหม่:
+```bash
+sudo chown -R 1000:1000 data/n8n
+docker compose up -d
+```
+(รายละเอียดเพิ่มเติมอยู่ในหัวข้อ **สิทธิ์โฟลเดอร์บน Linux / Server** ด้านบน)
+
+### Webhook ไม่ทำงาน
+- ตรวจสอบ `WEBHOOK_URL` ใน `.env`
+- ตรวจสอบ Cloudflare Tunnel ทำงานอยู่หรือไม่
+- ทดสอบ: `curl https://n8n.your-domain.com/webhook-test`
+
+### ลืมรหัสผ่าน n8n
+```bash
+# Reset owner account
+docker compose exec n8n n8n user-management:reset
 ```
 
 ---
 
-## ☁️ Cloudflare Tunnel (แนะนำ)
+## 📖 เอกสารอื่นๆ
 
-ใช้ Cloudflare Tunnel แทนการเปิดพอร์ต 80/443 — ได้ HTTPS อัตโนมัติและไม่ต้องกังวลเรื่อง Firewall
-
-### ขั้นตอนติดตั้ง
-
-#### 1. ติดตั้ง cloudflared
-
-```bash
-# Ubuntu 22.04/24.04
-sudo apt update
-sudo apt install -y curl lsb-release
-
-sudo mkdir -p --mode=0755 /usr/share/keyrings
-curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-  | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
-
-echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] \
-https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" \
-  | sudo tee /etc/apt/sources.list.d/cloudflared.list > /dev/null
-
-sudo apt update
-sudo apt install -y cloudflared
-```
-
-#### 2. สร้าง Tunnel
-
-```bash
-# Login (จะเปิด browser ให้ authorize)
-cloudflared tunnel login
-
-# สร้าง tunnel
-cloudflared tunnel create n8n-class
-
-# จด Tunnel ID ที่ได้ (เช่น xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-```
-
-#### 3. ตั้งค่า Tunnel
-
-สร้างไฟล์ `/etc/cloudflared/config.yml`:
-
-```yaml
-tunnel: <TUNNEL_ID>
-credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
-
-ingress:
-  - hostname: '*.datafabric.academy'
-    service: http://localhost:80
-  - service: http_status:404
-```
-
-ย้าย credentials:
-```bash
-sudo cp ~/.cloudflared/<TUNNEL_ID>.json /etc/cloudflared/
-sudo chown root:root /etc/cloudflared/<TUNNEL_ID>.json
-sudo chmod 600 /etc/cloudflared/<TUNNEL_ID>.json
-```
-
-#### 4. สร้าง DNS Records
-
-```bash
-# Wildcard สำหรับทุก n8n instance
-cloudflared tunnel route dns <TUNNEL_ID> '*.datafabric.academy'
-```
-
-#### 5. รันเป็น Service
-
-```bash
-sudo cloudflared service install
-sudo systemctl enable --now cloudflared
-```
+- [📁 คู่มือ Credentials](Credentials/) - วิธีขอ API Key ต่างๆ
+- [📁 ตัวอย่าง Case Studies](Case%20Studies/) - จากธุรกิจจริง
+- [🌐 n8n Documentation](https://docs.n8n.io/)
+- [💬 n8n Community](https://community.n8n.io/)
 
 ---
 
-## 🔧 สคริปต์ที่มีให้ใช้
+## 📝 License
 
-| สคริปต์ | ใช้เมื่อไหร่ |
-|---------|------------|
-| `./scripts/setup-class.sh` | **เริ่มต้นใช้งานทุกครั้ง** — ตั้งค่าและรัน stack |
-| `./scripts/regenerate-and-up.sh` | แก้ไข `.env` แล้วต้องการ regenerate |
-| `./scripts/backup-n8n-volumes.sh backup` | Backup ข้อมูล n8n |
-| `./scripts/backup-n8n-volumes.sh restore` | Restore ข้อมูล n8n |
+MIT License - ใช้เพื่อการศึกษาได้ฟรี
 
 ---
 
-## 🆘 แก้ปัญหา
+<div align="center">
 
-### Error 1033 — Cloudflare Tunnel error
+**สร้างด้วย ❤️ สำหรับนักเรียน n8n**
 
-**สาเหตุ:** DNS ไม่ได้ชี้มาที่ tunnel ปัจจุบัน
+[เริ่มเรียน Phase 1 →](workflows/01_Basics/README.md)
 
-**แก้:**
-1. ตรวจสอบว่า `*.datafabric.academy` เป็น CNAME ชี้ไป `<TUNNEL_ID>.cfargotunnel.com`
-2. ตรวจสอบว่าไม่มี A/AAAA records ซ้ำ
-3. รีสตาร์ท tunnel: `sudo systemctl restart cloudflared`
-
-### 404 Page Not Found (ทุกเครื่อง)
-
-**สาเหตุ:** BASE_HOST ใน `.env` ไม่ตรงกับ URL ที่เข้า
-
-**แก้:**
-```bash
-# แก้ .env ให้ตรงกับ URL
-nano .env  # แก้ BASE_HOST
-
-# รีเจนและรีสตาร์ท
-./scripts/regenerate-and-up.sh
-```
-
-### Bad Gateway (502)
-
-**สาเหตุ:** Postgres password ไม่ตรง
-
-**แก้:**
-```bash
-sh scripts/fix-postgres-password.sh
-./scripts/regenerate-and-up.sh
-```
-
----
-
-## 💾 Backup / Restore
-
-### Backup
-
-```bash
-# Backup ข้อมูล n8n
-./scripts/backup-n8n-volumes.sh backup
-
-# Backup Postgres (คัดลอกโฟลเดอร์)
-cp -r data/postgres backups/postgres-$(date +%Y%m%d)
-```
-
-### Restore
-
-```bash
-# Restore n8n
-./scripts/backup-n8n-volumes.sh restore
-
-# รีสตาร์ท stack
-./scripts/regenerate-and-up.sh
-```
-
----
-
-## 📝 หมายเหตุสำคัญ
-
-- **อย่า commit `.env`** — มีรหัสผ่านและข้อมูลสำคัญ
-- **ชื่อ volumes:** ใช้ named volumes (`n8n_1_data`, `n8n_2_data`, ...) ไม่ต้อง chown
-- **Wildcard DNS:** Cloudflare รองรับ wildcard (`*.domain.com`) สำหรับทุก subdomain
-- **Subdomain 4 ระดับ:** Cloudflare ฟรีไม่รองรับ (เช่น `n8n01.student.datafabric.academy` — นี่คือ 4 ระดับ) ใช้ `n8n01.datafabric.academy` (3 ระดับ) แทน
-
----
-
-## 📚 โครงสร้างโฟลเดอร์
-
-```
-Prepare-Student-Hosts/
-├── .env                      # ค่าตัวแปร (ไม่ commit)
-├── .env.example              # ตัวอย่าง
-├── docker-compose.yml        # Base services (postgres, traefik)
-├── docker-compose.generated.yml  # Auto-generated n8n services
-├── scripts/
-│   ├── setup-class.sh        # 🔥 สคริปต์หลักสำหรับทุกครั้งสอน
-│   ├── generate-compose.py   # Generate compose file
-│   ├── regenerate-and-up.sh # Regenerate + restart
-│   ├── backup-n8n-volumes.sh # Backup/restore volumes
-│   └── postgres-init/        # Database init scripts
-└── data/
-    ├── postgres/             # Postgres data
-    └── letsencrypt/          # SSL certificates (ถ้าใช้)
-```
-
----
-
-## 🎯 สรุปคำสั่งสำหรับครู/อาจารย์
-
-```bash
-# ทุกครั้งที่สอนใหม่ — ใช้คำสั่งเดียวนี้:
-cd /opt/Prepare-Student-Hosts && ./scripts/setup-class.sh
-
-# แก้ไขจำนวนนักเรียนหรือโดเมน:
-nano .env
-./scripts/regenerate-and-up.sh
-
-# Backup ก่อนจบคลาส:
-./scripts/backup-n8n-volumes.sh backup
-```
-
----
-
-**พร้อมใช้งาน!** 🎉
+</div>
